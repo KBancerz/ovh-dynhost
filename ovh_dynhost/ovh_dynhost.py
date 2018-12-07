@@ -56,6 +56,8 @@ OVH_API_ENDPOINT = 'https://www.ovh.com/nic/update'
 SAME_IP_ERROR = 75
 GENERAL_ERROR = 1
 
+HOSTS_DELIMITER = ';'
+
 
 def get_conf(conf_path, hostname=None, username=None,
              password=None):
@@ -139,38 +141,44 @@ def main():
 
     LOGGER.info("Public IP: {}".format(ip))
 
-    # Building Request
-    payload = {
-        'myip': ip,
-        'system': 'dyndns',
-        'hostname': hostname
-    }
-
     headers = {
         'user-agent': 'ovh-dynhost/' + __version__
     }
 
+    session = requests.Session()
     authentication = requests.auth.HTTPBasicAuth(username, password)
 
-    # Run Request
-    request = requests.Request('GET', url=OVH_API_ENDPOINT, params=payload,
-                               headers=headers, auth=authentication).prepare()
+    result = 0
 
-    session = requests.Session()
-    response = session.send(request).text.lower()
+    for single_hostname in hostname.split(HOSTS_DELIMITER):
+        # Building Request
+        payload = {
+            'myip': ip,
+            'system': 'dyndns',
+            'hostname': single_hostname
+        }
 
-    if "good" in response:
-        LOGGER.info("IP successfully updated")
-        sys.exit(0)
-    elif "nochg" in response:
-        LOGGER.debug("Matching same IP.  Not changed")
-        sys.exit(SAME_IP_ERROR)
-    else:
-        LOGGER.error(
-            "Error occurred in updating IP. Response from server:{}"
-            .format(response))
-        sys.exit(GENERAL_ERROR)
+        # Run Request
+        request = requests.Request(
+            'GET', url=OVH_API_ENDPOINT, params=payload, headers=headers,
+            auth=authentication).prepare()
 
+        response = session.send(request).text.lower()
+
+        if "good" in response:
+            LOGGER.info("IP successfully updated")
+            sys.exit(0)
+        elif "nochg" in response:
+            LOGGER.debug("Matching same IP.  Not changed")
+            if result != GENERAL_ERROR:
+                result = SAME_IP_ERROR
+        else:
+            LOGGER.error(
+                "Error occurred in updating IP. Response from server:{}"
+                .format(response))
+            result = GENERAL_ERROR
+
+    exit(result)
 
 if __name__ == '__main__':
     main()
